@@ -1,0 +1,126 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . "/vendor/autoload.php";
+
+const COW_DIR = __DIR__ . "/src/Cows";
+
+const HELP_STRING = <<<HELP
+cowsay PHP version 1.0.0, 2015 Nat Zimmermann
+Usage: cowsay [-bdgpstwy] [-h] [-e eyes] [-f cowfile]
+          [-l] [-n] [-T tongue] [-W wrapcolumn] [message]
+
+HELP;
+
+// TODO: Order correctly
+const EMOTIONS = [
+    "b" => [ // Borg
+        "eyes" => "==",
+    ],
+    "d" => [ // Dead
+        "eyes" => "xx",
+        "tongue" => "U ",
+    ],
+    "g" => [ // Greedy
+        "eyes" => "$$",
+    ],
+    "p" => [ // Paranoid
+        "eyes" => "@@",
+    ],
+    "s" => [ // Stoned
+        "eyes" => "**",
+        "tongue" => "U ",
+    ],
+    "t" => [ // Tired
+        "eyes" => "--",
+    ],
+    "w" => [ // Wired
+        "eyes" => "OO",
+    ],
+    "y" => [ // Youthful
+        "eyes" => "..",
+    ],
+];
+
+function class_to_style(string $class): string {
+    return preg_replace_callback("/[A-Z]/", function ($match) {
+        return "-" . strtolower($match[0]);
+    }, lcfirst($class));
+}
+
+function style_to_class(string $style): string {
+    return str_replace(" ", "", ucwords(str_replace("-", " ", $style)));
+}
+
+function get_cow_styles(): array {
+    $file_names = array_diff(scandir(COW_DIR), ['..', '.']);
+
+    return array_map(function ($file_name) {
+        // DefaultCow cannot simply be called Default, due to Default being a
+        // reserved word.
+        if ($file_name === "DefaultCow.php") return "default";
+
+        // Remove the file extension and convert to style string
+        return class_to_style(pathinfo($file_name, PATHINFO_FILENAME));
+    }, $file_names);
+}
+
+$available_options = [
+    "h",  // Show help?
+    "l",  // List cow styles?
+    "n",  // Preserve whitespace?
+    "W:", // Wrap column
+    "e:", // Eyes
+    "T:", // Tongue
+    "f:", // Style
+];
+
+foreach (EMOTIONS as $key => $emotion) {
+    array_push($available_options, $key);
+}
+
+$options = array_merge(array_flip($available_options), getopt(implode("", $available_options)));
+
+if ($options["h"] === false) die(HELP_STRING);
+
+if ($options["l"] === false) {
+    echo "Cow files in " . COW_DIR . ":\n";
+    die(wordwrap(implode(" ", get_cow_styles())) . "\n");
+}
+
+$message = null;
+
+if (is_null($message)) {
+    $message = rtrim(file_get_contents("php://stdin"));
+}
+
+$preserve_whitespace = $options["n"] === false;
+
+$wrap_column = $options["W"] ?? 40;
+$eyes        = $options["e"] ?? "oo";
+$tongue      = $options["T"] ?? "  ";
+$cow_style   = $options["f"] ?? "default";
+
+$cow_class_name = $cow_style === "default" ? "DefaultCow" : style_to_class($cow_style);
+
+foreach (EMOTIONS as $key => $emotion) {
+    if ($options[$key] !== false) continue;
+
+    if (array_key_exists("eyes", $emotion)) {
+        $eyes = $emotion["eyes"];
+    }
+
+    if (array_key_exists("tongue", $emotion)) {
+        $tongue = $emotion["tongue"];
+    }
+}
+
+$namespaced_cow_class_name = "Cowsay\\Cows\\$cow_class_name";
+
+if (file_exists(COW_DIR . "/$cow_class_name.php")) {
+    $cow = new $namespaced_cow_class_name($message, $wrap_column, $eyes, $tongue, $preserve_whitespace);
+} else {
+    die("cowsay: Could not find $cow_style cowfile!\n");
+}
+
+echo $cow->generate();
